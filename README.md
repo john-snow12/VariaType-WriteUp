@@ -286,6 +286,8 @@ curl -i -b "PHPSESSID=q4da62f7c63pkeu0026dcrs8r4" "http://portal.variatype.htb/f
 
 ---
 
+## Pembuatan SSH Key
+
 ```bash
 ssh-keygen -t ed25519 -f steve_key -N "" -C "steve_variatype"
 ```
@@ -393,6 +395,7 @@ Dua file dihasilkan: `root_key` sebagai private key dan `root_key.pub` sebagai p
 Agar skrip Python yang berjalan sebagai root bisa mengambil public key dari mesin penyerang, sebuah HTTP server disiapkan untuk melayani file tersebut:
 
 ```bash
+cd root
 python3 handler_root.py
 ```
 
@@ -423,7 +426,7 @@ ssh -i root_key root@10.129.42.177
 Shell root terbuka. flag root berhasil diambil:
 
 ```bash
-cat /root/root.txt
+cat root.txt
 ```
 
 ![ROOT_FLAG](gambar/root-txt.png)
