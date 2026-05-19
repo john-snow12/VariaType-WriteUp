@@ -1,9 +1,13 @@
 # VariaType — HackTheBox Write-up
 
 > **Platform:** Hack The Box
+> 
 > **Nama Mesin:** VariaType
+> 
 > **Tingkat Kesulitan:** Medium
+> 
 > **OS:** Linux
+> 
 > **Status:** Retired
 
 ---
