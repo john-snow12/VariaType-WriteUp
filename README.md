@@ -392,6 +392,7 @@ Aturan `sudo` ini sangat menarik karena skrip menerima argumen tambahan (ditanda
 SSH key pair baru disiapkan khusus untuk akses root:
 
 ```bash
+cd root
 ssh-keygen -t ed25519 -f root_key -N "" -C "root_variatype"
 ```
 
@@ -406,7 +407,6 @@ Strategi yang direncanakan adalah memanfaatkan skrip Python yang berjalan dengan
 HTTP server disiapkan di mesin penyerang untuk melayani `root_key.pub`:
 
 ```bash
-cd root
 python3 handler_root.py
 ```
 
